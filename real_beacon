@@ -43,7 +43,7 @@ cleanup() {
 }
 ssleep() { 
     local fake_name="/bin/$(ls /sbin | shuf -n 1)" 
-    local duration=$(shuf -i 5-10 -n 1) # wait between 30 and 45 seconds 
+    local duration=$(shuf -i 30-45 -n 1) # wait between 30 and 45 seconds 
     (exec -a "$fake_name" sleep "$duration") & 
     local sleep_pid=$! 
     
