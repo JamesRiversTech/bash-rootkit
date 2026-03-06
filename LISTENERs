@@ -1,0 +1,27 @@
+--BEACON-LISTENERs--
+--OPENSSL--
+openssl req -x509 -newkey rsa:4096 -keyout key.pem -out cert.pem -days 365 -nodes
+openssl s_server -key key.pem -cert cert.pem -port 4316
+------------
+
+---SOCAT---
+openssl req -x509 -newkey rsa:2048 -nodes -keyout key.pem -out cert.pem -days 365
+cat key.pem cert.pem > shell.pem
+socat OPENSSL-LISTEN:4316,cert=shell.pem,verify=0,fork STDOUT
+------------
+
+----NCAT----
+ncat --ssl -vv -l -p 4316
+------------
+
+--CRYPTCAT--
+cryptcat -lvp 4316
+------------
+
+-----NC-----
+nc -lvnp 4316
+------------
+
+--/DEV/TCP--
+nc -lvnp 4316
+------------
