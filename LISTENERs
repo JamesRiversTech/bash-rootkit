@@ -1,4 +1,6 @@
 --BEACON-LISTENERs--
+every listener the beacon might need, in order
+
 --OPENSSL--
 openssl req -x509 -newkey rsa:4096 -keyout key.pem -out cert.pem -days 365 -nodes
 openssl s_server -key key.pem -cert cert.pem -port 4316

