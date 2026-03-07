@@ -9,7 +9,7 @@
 
 **[🌐 Full Visual README](https://JamesRiversTech.github.io/bash-rootkit)** &nbsp;·&nbsp;
 **[💼 LinkedIn](https://www.linkedin.com/in/james-rivers-tech)** &nbsp;·&nbsp;
-**[🔗 jamesrivers.tech](https://jamesrivers.tech/)**
+**[🔗 JamesRivers.tech](https://jamesrivers.tech/)**
 
 ---
 
