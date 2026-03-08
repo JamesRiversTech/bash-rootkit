@@ -88,8 +88,16 @@ sudo systemctl enable libda-helper.service
 sudo systemctl restart libda-helper.service
 sudo systemctl status libda-helper.service
 
-timestomp $MFILE
-timestomp $FFILE
-timestomp $PFILE
+timestomp "$MFILE"
+timestomp "$FFILE"
+timestomp "$PFILE"
 
-rm -rf $0
+if command -v shred &>/dev/null;then
+        echo SHRED
+	shred -fun 10 $0
+	exit
+else
+        echo RM
+	rm -rf $0
+	exit
+fi
